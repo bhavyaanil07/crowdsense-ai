@@ -1,15 +1,47 @@
+# Python cache
 __pycache__/
 *.pyc
-.env
+*.pyo
+*.pyd
+
+# Virtual environments
 venv/
 .venv/
+env/
 
-models/*.pkl
+# Environment variables
+.env
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
 logs/*.csv
+!logs/.gitkeep
 
+# Generated datasets
+data/*.csv
 data/*.mp4
 data/*.avi
 data/*.mov
+data/*.mkv
+!data/.gitkeep
+!data/README.md
 
-.DS_Store
-.vscode/
+# Trained models
+models/*.pkl
+models/*.joblib
+!models/.gitkeep
+
+# Test outputs
+outputs/
+reports/
+plots/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
