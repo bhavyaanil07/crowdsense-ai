@@ -6,6 +6,7 @@ import time
 from core.detector import PersonDetector
 from core.tracker import CentroidTracker
 from core.feature_extractor import CrowdFeatureExtractor
+from core.session_logger import SessionLogger
 
 
 def load_config(path="config/config.yaml"):
@@ -85,6 +86,7 @@ def main():
     )
 
     feature_extractor = CrowdFeatureExtractor()
+    session_logger = SessionLogger()
 
     cap = cv2.VideoCapture(source)
 
@@ -93,6 +95,9 @@ def main():
         return
 
     previous_time = time.time()
+    frame_number = 0
+
+    print(f"Logging session data to: {session_logger.file_path}")
 
     while True:
         ret, frame = cap.read()
@@ -100,11 +105,15 @@ def main():
         if not ret:
             break
 
+        frame_number += 1
+
         frame = resize_frame(frame, config["video"]["resize_width"])
 
         boxes = detector.detect(frame)
         tracked_objects = tracker.update(boxes)
         features = feature_extractor.extract(tracked_objects)
+
+        session_logger.log(frame_number, features)
 
         for object_id, data in tracked_objects.items():
             x, y, w, h = data["bbox"]
@@ -150,15 +159,18 @@ def main():
 
         draw_feature_panel(frame, features)
 
-        cv2.imshow("CrowdSense AI - Feature Extraction", frame)
+        cv2.imshow("CrowdSense AI - CSV Logging", frame)
 
         key = cv2.waitKey(1) & 0xFF
 
         if key == ord("q"):
             break
 
+    session_logger.close()
     cap.release()
     cv2.destroyAllWindows()
+
+    print("Session ended. Log file saved successfully.")
 
 
 if __name__ == "__main__":
