@@ -7,6 +7,7 @@ from core.detector import PersonDetector
 from core.tracker import CentroidTracker
 from core.feature_extractor import CrowdFeatureExtractor
 from core.session_logger import SessionLogger
+from alerts.alert_engine import AlertEngine
 
 
 def load_config(path="config/config.yaml"):
@@ -62,6 +63,47 @@ def draw_feature_panel(frame, features):
         y += line_height
 
 
+def draw_alert_panel(frame, alert):
+    level = alert["level"]
+    alert_type = alert["type"]
+    message = alert["message"]
+
+    if level == "NORMAL":
+        color = (0, 255, 0)
+    elif level == "LOW":
+        color = (255, 255, 0)
+    elif level == "MEDIUM":
+        color = (0, 255, 255)
+    elif level == "HIGH":
+        color = (0, 165, 255)
+    else:
+        color = (0, 0, 255)
+
+    height, width = frame.shape[:2]
+
+    cv2.rectangle(frame, (0, height - 90), (width, height), color, -1)
+
+    cv2.putText(
+        frame,
+        f"ALERT LEVEL: {level}",
+        (20, height - 55),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (0, 0, 0),
+        2
+    )
+
+    cv2.putText(
+        frame,
+        f"{alert_type} - {message}",
+        (20, height - 20),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.65,
+        (0, 0, 0),
+        2
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -87,6 +129,7 @@ def main():
 
     feature_extractor = CrowdFeatureExtractor()
     session_logger = SessionLogger()
+    alert_engine = AlertEngine(config)
 
     cap = cv2.VideoCapture(source)
 
@@ -112,8 +155,16 @@ def main():
         boxes = detector.detect(frame)
         tracked_objects = tracker.update(boxes)
         features = feature_extractor.extract(tracked_objects)
+        alert = alert_engine.evaluate(features)
 
-        session_logger.log(frame_number, features)
+        log_row = {
+            **features,
+            "alert_level": alert["level"],
+            "alert_type": alert["type"],
+            "alert_message": alert["message"]
+        }
+
+        session_logger.log(frame_number, log_row)
 
         for object_id, data in tracked_objects.items():
             x, y, w, h = data["bbox"]
@@ -158,8 +209,9 @@ def main():
         )
 
         draw_feature_panel(frame, features)
+        draw_alert_panel(frame, alert)
 
-        cv2.imshow("CrowdSense AI - CSV Logging", frame)
+        cv2.imshow("CrowdSense AI - Alert System", frame)
 
         key = cv2.waitKey(1) & 0xFF
 

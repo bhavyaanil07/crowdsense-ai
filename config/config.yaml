@@ -11,3 +11,11 @@ detector:
 tracker:
   max_disappeared: 25
   max_distance: 90
+
+alerts:
+  person_count_medium: 5
+  person_count_high: 10
+  velocity_medium: 80
+  velocity_high: 160
+  dispersion_low: 40
+  dispersion_high: 250
