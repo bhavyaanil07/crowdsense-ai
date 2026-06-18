@@ -8,6 +8,7 @@ from core.tracker import CentroidTracker
 from core.feature_extractor import CrowdFeatureExtractor
 from core.session_logger import SessionLogger
 from core.ml_anomaly_detector import MLAnomalyDetector
+from core.anomaly_classifier import AnomalyClassifier
 from alerts.alert_engine import AlertEngine
 
 
@@ -28,7 +29,7 @@ def parse_source(source):
         return source
 
 
-def draw_feature_panel(frame, features, ml_result):
+def draw_feature_panel(frame, features, ml_result, classifier_result):
     x = 20
     y = 110
     line_height = 28
@@ -79,7 +80,7 @@ def draw_feature_panel(frame, features, ml_result):
 
     cv2.putText(
         frame,
-        f"ML Status: {ml_result['ml_status']}",
+        f"IF Status: {ml_result['ml_status']}",
         (x, y),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.55,
@@ -91,7 +92,31 @@ def draw_feature_panel(frame, features, ml_result):
 
     cv2.putText(
         frame,
-        f"Anomaly Score: {ml_result['anomaly_score']:.4f}",
+        f"IF Score: {ml_result['anomaly_score']:.4f}",
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.55,
+        (255, 255, 255),
+        2
+    )
+
+    y += line_height
+
+    cv2.putText(
+        frame,
+        f"RF Type: {classifier_result['predicted_type']}",
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.55,
+        (255, 255, 255),
+        2
+    )
+
+    y += line_height
+
+    cv2.putText(
+        frame,
+        f"RF Confidence: {classifier_result['confidence']:.2f}",
         (x, y),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.55,
@@ -100,18 +125,62 @@ def draw_feature_panel(frame, features, ml_result):
     )
 
 
-def draw_alert_panel(frame, alert, ml_result):
-    level = alert["level"]
-    alert_type = alert["type"]
-    message = alert["message"]
+def combine_alerts(rule_alert, ml_result, classifier_result):
+    final_alert = {
+        "level": rule_alert["level"],
+        "type": rule_alert["type"],
+        "message": rule_alert["message"]
+    }
 
-    if ml_result["enabled"] and ml_result["ml_status"] == "ANOMALY":
-        if level == "NORMAL":
-            level = "MEDIUM"
-            alert_type = "ML Anomaly"
-            message = "Isolation Forest detected abnormal crowd behavior"
+    ml_flagged = ml_result["enabled"] and ml_result["ml_status"] == "ANOMALY"
+    rf_enabled = classifier_result["enabled"]
+    predicted_type = classifier_result["predicted_type"]
+    confidence = classifier_result["confidence"]
+
+    if ml_flagged:
+        if final_alert["level"] == "NORMAL":
+            final_alert = {
+                "level": "MEDIUM",
+                "type": "ML Anomaly",
+                "message": "Isolation Forest detected abnormal crowd behavior"
+            }
         else:
-            message = message + " | ML model also flagged anomaly"
+            final_alert["message"] += " | Isolation Forest also flagged anomaly"
+
+    if rf_enabled and predicted_type != "normal":
+        if confidence >= 0.70:
+            final_alert = {
+                "level": "HIGH",
+                "type": predicted_type,
+                "message": f"Random Forest classified anomaly as {predicted_type}"
+            }
+
+        elif confidence >= 0.45 and final_alert["level"] in ["NORMAL", "LOW"]:
+            final_alert = {
+                "level": "MEDIUM",
+                "type": predicted_type,
+                "message": f"Possible {predicted_type} detected by Random Forest"
+            }
+
+    if (
+        ml_flagged
+        and rf_enabled
+        and predicted_type != "normal"
+        and confidence >= 0.70
+    ):
+        final_alert = {
+            "level": "CRITICAL",
+            "type": predicted_type,
+            "message": f"Both IF and RF detected high-confidence {predicted_type}"
+        }
+
+    return final_alert
+
+
+def draw_alert_panel(frame, final_alert):
+    level = final_alert["level"]
+    alert_type = final_alert["type"]
+    message = final_alert["message"]
 
     if level == "NORMAL":
         color = (0, 255, 0)
@@ -148,12 +217,6 @@ def draw_alert_panel(frame, alert, ml_result):
         2
     )
 
-    return {
-        "level": level,
-        "type": alert_type,
-        "message": message
-    }
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -186,6 +249,10 @@ def main():
         config["models"]["isolation_forest_path"]
     )
 
+    anomaly_classifier = AnomalyClassifier(
+        config["models"]["random_forest_path"]
+    )
+
     cap = cv2.VideoCapture(source)
 
     if not cap.isOpened():
@@ -214,6 +281,13 @@ def main():
 
         rule_alert = alert_engine.evaluate(features)
         ml_result = ml_detector.predict(features)
+        classifier_result = anomaly_classifier.predict(features)
+
+        final_alert = combine_alerts(
+            rule_alert,
+            ml_result,
+            classifier_result
+        )
 
         for object_id, data in tracked_objects.items():
             x, y, w, h = data["bbox"]
@@ -257,16 +331,24 @@ def main():
             2
         )
 
-        draw_feature_panel(frame, features, ml_result)
-        final_alert = draw_alert_panel(frame, rule_alert, ml_result)
+        draw_feature_panel(
+            frame,
+            features,
+            ml_result,
+            classifier_result
+        )
+
+        draw_alert_panel(frame, final_alert)
 
         log_row = {
             **features,
             "rule_alert_level": rule_alert["level"],
             "rule_alert_type": rule_alert["type"],
-            "ml_status": ml_result["ml_status"],
-            "ml_prediction": ml_result["ml_prediction"],
-            "anomaly_score": ml_result["anomaly_score"],
+            "if_status": ml_result["ml_status"],
+            "if_prediction": ml_result["ml_prediction"],
+            "if_anomaly_score": ml_result["anomaly_score"],
+            "rf_predicted_type": classifier_result["predicted_type"],
+            "rf_confidence": classifier_result["confidence"],
             "final_alert_level": final_alert["level"],
             "final_alert_type": final_alert["type"],
             "final_alert_message": final_alert["message"]
@@ -274,7 +356,7 @@ def main():
 
         session_logger.log(frame_number, log_row)
 
-        cv2.imshow("CrowdSense AI - ML Anomaly Detection", frame)
+        cv2.imshow("CrowdSense AI - Two Layer ML System", frame)
 
         key = cv2.waitKey(1) & 0xFF
 
