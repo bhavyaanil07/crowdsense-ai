@@ -21,4 +21,6 @@ alerts:
   dispersion_high: 250
 
 models:
+  models:
   isolation_forest_path: models/isolation_forest.pkl
+  random_forest_path: models/random_forest_classifier.pkl
