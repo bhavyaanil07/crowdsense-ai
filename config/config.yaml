@@ -19,3 +19,6 @@ alerts:
   velocity_high: 160
   dispersion_low: 40
   dispersion_high: 250
+
+models:
+  isolation_forest_path: models/isolation_forest.pkl

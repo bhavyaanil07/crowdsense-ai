@@ -7,6 +7,7 @@ from core.detector import PersonDetector
 from core.tracker import CentroidTracker
 from core.feature_extractor import CrowdFeatureExtractor
 from core.session_logger import SessionLogger
+from core.ml_anomaly_detector import MLAnomalyDetector
 from alerts.alert_engine import AlertEngine
 
 
@@ -27,7 +28,7 @@ def parse_source(source):
         return source
 
 
-def draw_feature_panel(frame, features):
+def draw_feature_panel(frame, features, ml_result):
     x = 20
     y = 110
     line_height = 28
@@ -62,11 +63,55 @@ def draw_feature_panel(frame, features):
 
         y += line_height
 
+    y += 10
 
-def draw_alert_panel(frame, alert):
+    cv2.putText(
+        frame,
+        "ML Anomaly Detection",
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2
+    )
+
+    y += line_height
+
+    cv2.putText(
+        frame,
+        f"ML Status: {ml_result['ml_status']}",
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.55,
+        (255, 255, 255),
+        2
+    )
+
+    y += line_height
+
+    cv2.putText(
+        frame,
+        f"Anomaly Score: {ml_result['anomaly_score']:.4f}",
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.55,
+        (255, 255, 255),
+        2
+    )
+
+
+def draw_alert_panel(frame, alert, ml_result):
     level = alert["level"]
     alert_type = alert["type"]
     message = alert["message"]
+
+    if ml_result["enabled"] and ml_result["ml_status"] == "ANOMALY":
+        if level == "NORMAL":
+            level = "MEDIUM"
+            alert_type = "ML Anomaly"
+            message = "Isolation Forest detected abnormal crowd behavior"
+        else:
+            message = message + " | ML model also flagged anomaly"
 
     if level == "NORMAL":
         color = (0, 255, 0)
@@ -103,6 +148,12 @@ def draw_alert_panel(frame, alert):
         2
     )
 
+    return {
+        "level": level,
+        "type": alert_type,
+        "message": message
+    }
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -131,6 +182,10 @@ def main():
     session_logger = SessionLogger()
     alert_engine = AlertEngine(config)
 
+    ml_detector = MLAnomalyDetector(
+        config["models"]["isolation_forest_path"]
+    )
+
     cap = cv2.VideoCapture(source)
 
     if not cap.isOpened():
@@ -154,17 +209,11 @@ def main():
 
         boxes = detector.detect(frame)
         tracked_objects = tracker.update(boxes)
+
         features = feature_extractor.extract(tracked_objects)
-        alert = alert_engine.evaluate(features)
 
-        log_row = {
-            **features,
-            "alert_level": alert["level"],
-            "alert_type": alert["type"],
-            "alert_message": alert["message"]
-        }
-
-        session_logger.log(frame_number, log_row)
+        rule_alert = alert_engine.evaluate(features)
+        ml_result = ml_detector.predict(features)
 
         for object_id, data in tracked_objects.items():
             x, y, w, h = data["bbox"]
@@ -208,10 +257,24 @@ def main():
             2
         )
 
-        draw_feature_panel(frame, features)
-        draw_alert_panel(frame, alert)
+        draw_feature_panel(frame, features, ml_result)
+        final_alert = draw_alert_panel(frame, rule_alert, ml_result)
 
-        cv2.imshow("CrowdSense AI - Alert System", frame)
+        log_row = {
+            **features,
+            "rule_alert_level": rule_alert["level"],
+            "rule_alert_type": rule_alert["type"],
+            "ml_status": ml_result["ml_status"],
+            "ml_prediction": ml_result["ml_prediction"],
+            "anomaly_score": ml_result["anomaly_score"],
+            "final_alert_level": final_alert["level"],
+            "final_alert_type": final_alert["type"],
+            "final_alert_message": final_alert["message"]
+        }
+
+        session_logger.log(frame_number, log_row)
+
+        cv2.imshow("CrowdSense AI - ML Anomaly Detection", frame)
 
         key = cv2.waitKey(1) & 0xFF
 
