@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.env
+venv/
+.venv/
+
+models/*.pkl
+logs/*.csv
+
+data/*.mp4
+data/*.avi
+data/*.mov
+
+.DS_Store
+.vscode/
