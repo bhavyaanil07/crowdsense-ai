@@ -5,6 +5,7 @@ import time
 
 from core.detector import PersonDetector
 from core.tracker import CentroidTracker
+from core.feature_extractor import CrowdFeatureExtractor
 
 
 def load_config(path="config/config.yaml"):
@@ -22,6 +23,42 @@ def parse_source(source):
         return int(source)
     except ValueError:
         return source
+
+
+def draw_feature_panel(frame, features):
+    x = 20
+    y = 110
+    line_height = 28
+
+    cv2.putText(
+        frame,
+        "Crowd Features",
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2
+    )
+
+    y += line_height
+
+    for key, value in features.items():
+        if isinstance(value, float):
+            text = f"{key}: {value:.2f}"
+        else:
+            text = f"{key}: {value}"
+
+        cv2.putText(
+            frame,
+            text,
+            (x, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (255, 255, 255),
+            2
+        )
+
+        y += line_height
 
 
 def main():
@@ -47,6 +84,8 @@ def main():
         max_distance=config["tracker"]["max_distance"]
     )
 
+    feature_extractor = CrowdFeatureExtractor()
+
     cap = cv2.VideoCapture(source)
 
     if not cap.isOpened():
@@ -65,6 +104,7 @@ def main():
 
         boxes = detector.detect(frame)
         tracked_objects = tracker.update(boxes)
+        features = feature_extractor.extract(tracked_objects)
 
         for object_id, data in tracked_objects.items():
             x, y, w, h = data["bbox"]
@@ -108,7 +148,9 @@ def main():
             2
         )
 
-        cv2.imshow("CrowdSense AI - Detection and Tracking", frame)
+        draw_feature_panel(frame, features)
+
+        cv2.imshow("CrowdSense AI - Feature Extraction", frame)
 
         key = cv2.waitKey(1) & 0xFF
 
