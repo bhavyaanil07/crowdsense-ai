@@ -1,0 +1,13 @@
+video:
+  source: 0
+  resize_width: 800
+
+detector:
+  win_stride: [8, 8]
+  padding: [8, 8]
+  scale: 1.05
+  nms_threshold: 0.35
+
+tracker:
+  max_disappeared: 25
+  max_distance: 90
