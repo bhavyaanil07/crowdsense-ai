@@ -1,3 +1,6 @@
 opencv-python
 numpy
 PyYAML
+pandas
+scikit-learn
+joblib
